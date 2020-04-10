@@ -1,82 +1,79 @@
-from flask import Flask,jsonify,request, Response
-from flask_pymongo import PyMongo
-from werkzeug.security import generate_password_hash, check_password_hash
-from bson import json_util,ObjectId
-app = Flask(__name__)
+from flask import Flask,jsonify,request,Response
+from flask_mysqldb import MySQL
+from  werkzeug.security import generate_password_hash, check_password_hash
 
-app.config['MONGO_URI']='mongodb://localhost/pythondb'
-mongo = PyMongo(app)
+app =  Flask(__name__)
 
-@app.route('/users', methods=['POST'])
-def createUser():
-    username = request.json['username']
-    password = request.json['password']
-    email = request.json['email']
+app.config['MYSQL_HOST']='localhost'
+app.config['MYSQL_PASSWORD']='Admin_09'
+app.config['MYSQL_USER']='root'
+app.config['MYSQL_DB']='pythondb'
 
-    if username and password and email:
-         password_hash = generate_password_hash(password)
-         id = mongo.db.users.insert_many([
-            {
-            "username":username,
-             "password":password_hash,
-             "email":email
-            }
-         ])
+app.secret_key='secrect_key'
 
-         response = {
-             "id":str(id),
-             "username":username,
-             "password":password_hash,
-             "email":email
-         }
-         return response
-    else:
-        return error_found()
+mysql = MySQL(app) 
+
 
 @app.route('/users', methods=['GET'])
-def getUsers():
-    users = mongo.db.users.find()
-    response = json_util.dumps(users)
-    return Response(response, mimetype="application/json")
+def getusers():
+    pool = mysql.connection.cursor()
+    pool.execute('SELECT * FROM users')
+    users = pool.fetchall()
+    return jsonify(users)
 
 @app.route('/users/<id>', methods=['GET'])
 def getOneUser(id):
-    user = mongo.db.users.find_one({'_id': ObjectId(id)})
-    response = json_util.dumps(user)
-    return Response(response)
+    pool = mysql.connection.cursor()
+    pool.execute('SELECT * FROM users WHERE id=%s',id)
+    user = pool.fetchall()
+    return jsonify(user)
 
-
-@app.route('/users/<id>', methods=['DELETE'])
-def deleteUser(id):
-    mongo.db.users.delete_one({'_id':ObjectId(id)})
-    return jsonify({
-        "message":"user with id " + id + " was deleted"
-    })
-
-@app.route('/users/<id>', methods=['PUT'])
-def updateUser(id):
+@app.route('/users', methods=['POST'])
+def createUser():
     username= request.json['username']
     password = request.json['password']
     email = request.json['email']
     hash_password = generate_password_hash(password)
-    mongo.db.users.update_one({"_id":ObjectId(id)}, {'$set':{
-        "usernaame":username,
-        "password":hash_password,
-        "email":email
-    }})
+    pool = mysql.connection.cursor()
+    pool.execute('INSERT INTO users (username, password, email) VALUES (%s,%s,%s)',(username, hash_password, email) )
+    mysql.connection.commit()
+    return Response('user created', mimetype='applcation/json')
+
+@app.route('/users/<id>',methods=['DELETE'])
+def deleteUser(id):
+    pool = mysql.connection.cursor()
+    pool.execute('DELETE FROM users WHERE id=%s', id)
+    mysql.connection.commit()
+
     return jsonify({
-        "message":"user updated"
+        "message":"user deleted"
+    })
+   
+
+@app.route('/users/<id>', methods=['PUT'])
+def updateusers(id):
+    username = request.json['username']
+    password = request.json['password']
+    email = request.json['email']
+
+    pool = mysql.connection.cursor()
+    hash_password = generate_password_hash(password)
+    pool.execute('UPDATE users SET username=%s, password=%s, email=%s WHERE id=%s',(
+        username, hash_password, email, id
+    ))
+    mysql.connection.commit()
+    return jsonify({
+        "message":"users updated"
     })
 
 @app.errorhandler(404)
-def error_found(error=None):
-    response =jsonify({
-        "message":"request no found "+ request.url,
-        "status":404
+def erro_found(error=None):
+    response = jsonify({
+        "message":"page not found "+ request.url,
+        "status":'404'
     })
     response.status_code = 404
     return response
 
-#server
-if __name__ == '__main__':
+if __name__=='__main__':
     app.run(debug=True, port=4000)
